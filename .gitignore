@@ -1,14 +1,8 @@
 work/
-<<<<<<< HEAD
-*.wlf
-transcript
-*.mti
-*.mpf
-=======
 transcript
 *.wlf
 *.vstf
 *.mti
+*.mpf
 *.log
 *.bak
->>>>>>> 21671a91dc520d5ca1ac875043682de48448ca51
