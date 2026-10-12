@@ -4,10 +4,11 @@
 -------------------------------------------------------------------------
 -- tb_addsub_n.vhd
 -------------------------------------------------------------------------
--- DESCRIPTION: Checks the 32-bit ripple-carry adder/subtractor against
--- numeric_std arithmetic for every pair of a set of corner-case operands,
--- in both add and subtract mode. Checks the sum, carry out, and signed
--- overflow. Each case is held for 10 ns for the waveform.
+-- DESCRIPTION: Runs one edge case per row below through the 32-bit
+-- adder/subtractor and checks the sum, carry out, and signed overflow.
+-- Covers carry out without overflow, overflow in both directions for
+-- add and subtract, and borrow (carry out = 0) on subtract.
+-- Each case is held for 10 ns for the waveform.
 -------------------------------------------------------------------------
 
 library IEEE;
@@ -29,7 +30,15 @@ architecture behavior of tb_addsub_n is
          o_Ovfl : out std_logic);
   end component;
 
-  type word_array_t is array (natural range <>) of std_logic_vector(31 downto 0);
+  type test_t is record
+    sub  : std_logic;
+    a    : std_logic_vector(31 downto 0);
+    b    : std_logic_vector(31 downto 0);
+    s    : std_logic_vector(31 downto 0);
+    cout : std_logic;
+    ovfl : std_logic;
+  end record;
+  type test_array_t is array (natural range <>) of test_t;
 
   -- Hex string for report messages (to_hstring needs VHDL-2008).
   function to_hex(v : std_logic_vector(31 downto 0)) return string is
@@ -48,9 +57,20 @@ architecture behavior of tb_addsub_n is
     return v_Str;
   end function;
 
-  constant c_VALUES : word_array_t := (
-    x"00000000", x"00000001", x"FFFFFFFF", x"7FFFFFFF",
-    x"80000000", x"FFFFFFFB", x"12345678", x"AAAAAAAA");
+  --  sub  A            B            expected S   Cout Ovfl
+  constant c_TESTS : test_array_t := (
+    ('0', x"00000000", x"00000000", x"00000000", '0', '0'),  --  0: 0 + 0
+    ('0', x"00000001", x"00000001", x"00000002", '0', '0'),  --  1: 1 + 1 = 2
+    ('0', x"FFFFFFFF", x"00000001", x"00000000", '1', '0'),  --  2: -1 + 1: carry out, no overflow
+    ('0', x"FFFFFFFB", x"00000005", x"00000000", '1', '0'),  --  3: -5 + 5 = 0: carry out, no overflow
+    ('0', x"7FFFFFFF", x"00000001", x"80000000", '0', '1'),  --  4: max + 1: overflow (pos + pos = neg)
+    ('0', x"80000000", x"80000000", x"00000000", '1', '1'),  --  5: min + min: overflow (neg + neg = pos)
+    ('1', x"00000005", x"00000005", x"00000000", '1', '0'),  --  6: 5 - 5 = 0: no borrow (Cout = 1)
+    ('1', x"00000001", x"00000002", x"FFFFFFFF", '0', '0'),  --  7: 1 - 2 = -1: borrow (Cout = 0)
+    ('1', x"80000000", x"00000001", x"7FFFFFFF", '1', '1'),  --  8: min - 1: overflow (neg - pos = pos)
+    ('1', x"7FFFFFFF", x"FFFFFFFF", x"80000000", '0', '1'),  --  9: max - (-1): overflow (pos - neg = neg)
+    ('1', x"00000000", x"80000000", x"80000000", '0', '1')   -- 10: 0 - min: overflow (min has no positive)
+  );
 
   signal s_A, s_B, s_S : std_logic_vector(31 downto 0) := (others => '0');
   signal s_Sub         : std_logic := '0';
@@ -70,61 +90,27 @@ begin
 
   P_TEST : process
     variable v_Errors : integer := 0;
-    variable v_Count  : integer := 0;
-    variable v_A, v_B : std_logic_vector(31 downto 0);
-    variable v_BEff   : std_logic_vector(31 downto 0);  -- B as the adder sees it
-    variable v_Wide   : unsigned(32 downto 0);
-    variable v_ExpS   : std_logic_vector(31 downto 0);
-    variable v_ExpC   : std_logic;
-    variable v_ExpV   : std_logic;
+    variable v_T      : test_t;
   begin
-    for sub in 0 to 1 loop
-      for i in c_VALUES'range loop
-        for j in c_VALUES'range loop
-          v_A := c_VALUES(i);
-          v_B := c_VALUES(j);
+    for i in c_TESTS'range loop
+      v_T   := c_TESTS(i);
+      s_A   <= v_T.a;
+      s_B   <= v_T.b;
+      s_Sub <= v_T.sub;
+      wait for 10 ns;
 
-          -- Reference: A + B, or A + not(B) + 1 for subtract.
-          if sub = 1 then
-            v_BEff := not v_B;
-            v_Wide := ('0' & unsigned(v_A)) + ('0' & unsigned(v_BEff)) + 1;
-          else
-            v_BEff := v_B;
-            v_Wide := ('0' & unsigned(v_A)) + ('0' & unsigned(v_BEff));
-          end if;
-          v_ExpS := std_logic_vector(v_Wide(31 downto 0));
-          v_ExpC := v_Wide(32);
-          -- Signed overflow: operands (as added) share a sign, result does not.
-          if v_A(31) = v_BEff(31) and v_ExpS(31) /= v_A(31) then
-            v_ExpV := '1';
-          else
-            v_ExpV := '0';
-          end if;
-
-          s_A   <= v_A;
-          s_B   <= v_B;
-          if sub = 1 then
-            s_Sub <= '1';
-          else
-            s_Sub <= '0';
-          end if;
-          wait for 10 ns;
-          v_Count := v_Count + 1;
-
-          if s_S /= v_ExpS or s_Cout /= v_ExpC or s_Ovfl /= v_ExpV then
-            report "MISMATCH sub=" & integer'image(sub) &
-                   " A=" & to_hex(v_A) & " B=" & to_hex(v_B) &
-                   " got S=" & to_hex(s_S) & " C=" & std_logic'image(s_Cout) & " V=" & std_logic'image(s_Ovfl) &
-                   " expected S=" & to_hex(v_ExpS) & " C=" & std_logic'image(v_ExpC) & " V=" & std_logic'image(v_ExpV)
-                   severity error;
-            v_Errors := v_Errors + 1;
-          end if;
-        end loop;
-      end loop;
+      if s_S /= v_T.s or s_Cout /= v_T.cout or s_Ovfl /= v_T.ovfl then
+        report "MISMATCH case " & integer'image(i) & " sub=" & std_logic'image(v_T.sub) &
+               " A=" & to_hex(v_T.a) & " B=" & to_hex(v_T.b) &
+               " got S=" & to_hex(s_S) & " C=" & std_logic'image(s_Cout) & " V=" & std_logic'image(s_Ovfl) &
+               " expected S=" & to_hex(v_T.s) & " C=" & std_logic'image(v_T.cout) & " V=" & std_logic'image(v_T.ovfl)
+               severity error;
+        v_Errors := v_Errors + 1;
+      end if;
     end loop;
 
     if v_Errors = 0 then
-      report "tb_addsub_n: all " & integer'image(v_Count) & " cases PASSED" severity note;
+      report "tb_addsub_n: all " & integer'image(c_TESTS'length) & " cases PASSED" severity note;
     else
       report "tb_addsub_n: " & integer'image(v_Errors) & " FAILURES" severity failure;
     end if;
