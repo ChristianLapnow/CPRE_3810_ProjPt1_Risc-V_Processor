@@ -26,7 +26,7 @@ end addsub_n;
 
 architecture structural of addsub_n is
 
-  component full_adder is
+  component fullAdder is
     port(i_A    : in  std_logic;
          i_B    : in  std_logic;
          i_Cin  : in  std_logic;
@@ -43,7 +43,7 @@ begin
   s_C(0) <= i_Sub;
 
   G_ADDERS: for i in 0 to N-1 generate
-    FA: full_adder
+    FA: fullAdder
       port map(i_A    => i_A(i),
                i_B    => s_B(i),
                i_Cin  => s_C(i),

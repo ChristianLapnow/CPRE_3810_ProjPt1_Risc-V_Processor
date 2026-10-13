@@ -33,7 +33,6 @@ set src_files {
     src/adder_N.vhd
     src/dffg.vhd
 
-    src/full_adder.vhd
     src/addsub_n.vhd
     src/barrel_shifter.vhd
     src/alu.vhd
