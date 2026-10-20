@@ -12,3 +12,6 @@ wlft*
 .linkc/
 system-map.json
 system-map.*.json
+__pycache__/
+cpre3810-toolflow/output/
+cpre3810-toolflow/proj
