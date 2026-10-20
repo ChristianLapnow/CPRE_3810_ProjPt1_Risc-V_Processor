@@ -6,6 +6,9 @@ transcript
 *.mpf
 *.log
 *.bak
-cpre3810-toolflow/
 .~lock*
 wlft*
+.DS_Store
+.linkc/
+system-map.json
+system-map.*.json
