@@ -7,7 +7,7 @@
 
 -- RISCV_Processor.vhd
 -------------------------------------------------------------------------
--- DESCRIPTION: This file contains a skeleton of a RISCV_Processor  
+-- DESCRIPTION: This file contains a skeleton of a RISCV_Processor
 -- implementation.
 
 -- 01/29/2019 by H3::Design created.
@@ -40,9 +40,10 @@ architecture structure of RISCV_Processor is
   signal s_DMemWr       : std_logic; -- TODO: use this signal as the final active high data memory write enable signal
   signal s_DMemAddr     : std_logic_vector(N-1 downto 0); -- TODO: use this signal as the final data memory address input
   signal s_DMemData     : std_logic_vector(N-1 downto 0); -- TODO: use this signal as the final data memory data input
+  signal s_DMemBE       : std_logic_vector(3 downto 0); -- TODO: enable the addressed byte for SB, halfword for SH, or all bytes for SW
   signal s_DMemOut      : std_logic_vector(N-1 downto 0); -- TODO: use this signal as the data memory output
- 
-  -- Required register file signals 
+
+  -- Required register file signals
   signal s_RegWr        : std_logic; -- TODO: use this signal as the final active high write enable input to the register file
   signal s_RegWrAddr    : std_logic_vector(4 downto 0); -- TODO: use this signal as the final destination register address input
   signal s_RegWrData    : std_logic_vector(N-1 downto 0); -- TODO: use this signal as the final data memory data input
@@ -50,7 +51,7 @@ architecture structure of RISCV_Processor is
   -- Required instruction memory signals
   signal s_IMemAddr     : std_logic_vector(N-1 downto 0); -- Do not assign this signal, assign to s_PC instead
   signal s_PC : std_logic_vector(N-1 downto 0); -- TODO: use this signal as your intended final instruction memory address input.
-  signal s_Inst         : std_logic_vector(N-1 downto 0); -- TODO: use this signal as the instruction signal 
+  signal s_Inst         : std_logic_vector(N-1 downto 0); -- TODO: use this signal as the instruction signal
 
   -- Required halt signal -- for simulation
   signal s_Halt         : std_logic;  -- TODO: this signal indicates to the simulation that intended program execution has completed. (Use WFI with Opcode: 111 0011 func3: 000 and func12: 000100000101 -- func12 is imm field from I-format)
@@ -65,6 +66,7 @@ architecture structure of RISCV_Processor is
           clk          : in std_logic;
           addr         : in std_logic_vector((ADDR_WIDTH-1) downto 0);
           data         : in std_logic_vector((DATA_WIDTH-1) downto 0);
+          be           : in std_logic_vector(3 downto 0);
           we           : in std_logic := '1';
           q            : out std_logic_vector((DATA_WIDTH -1) downto 0));
     end component;
@@ -122,6 +124,21 @@ architecture structure of RISCV_Processor is
          o_Zero       : out std_logic);
   end component;
 
+  component loadUnit is
+    port(i_Word   : in  std_logic_vector(31 downto 0);
+         i_Addr   : in  std_logic_vector(1 downto 0);
+         i_Funct3 : in  std_logic_vector(2 downto 0);
+         o_Data   : out std_logic_vector(31 downto 0));
+  end component;
+
+  component storeUnit is
+    port(i_Data   : in  std_logic_vector(31 downto 0);
+         i_Addr   : in  std_logic_vector(1 downto 0);
+         i_Funct3 : in  std_logic_vector(1 downto 0);
+         o_Data   : out std_logic_vector(31 downto 0);
+         o_BE     : out std_logic_vector(3 downto 0));
+  end component;
+
   component mux2t1_N is
     generic(N : integer := 32);
     port(i_S          : in  std_logic;
@@ -146,7 +163,8 @@ architecture structure of RISCV_Processor is
   signal s_ALUB     : std_logic_vector(N-1 downto 0);
   signal s_ALURes   : std_logic_vector(N-1 downto 0);
   signal s_Zero     : std_logic;
-  signal s_ResLo    : std_logic_vector(N-1 downto 0);  -- ALU or DMem
+  signal s_LoadData : std_logic_vector(N-1 downto 0);
+  signal s_ResLo    : std_logic_vector(N-1 downto 0);  -- ALU or load
   signal s_ResHi    : std_logic_vector(N-1 downto 0);  -- PC+4 or imm
 
 begin
@@ -162,6 +180,7 @@ begin
     port map(clk  => iCLK,
              addr => s_IMemAddr(11 downto 2),
              data => iInstExt,
+             be   => "1111",
              we   => iInstLd,
              q    => s_Inst);
 
@@ -171,6 +190,7 @@ begin
     port map(clk  => iCLK,
              addr => s_DMemAddr(11 downto 2),
              data => s_DMemData,
+             be   => s_DMemBE,
              we   => s_DMemWr,
              q    => s_DMemOut);
 
@@ -265,15 +285,29 @@ begin
   -- Data memory connections
   ---------------------------------------------------------------------
   s_DMemAddr <= s_ALURes;
-  s_DMemData <= s_RS2Data;
   s_DMemWr   <= s_MemWrite;
 
+  -- store unit (sb/sh/sw)
+  STORE0: storeUnit
+    port map(i_Data   => s_RS2Data,
+             i_Addr   => s_DMemAddr(1 downto 0),
+             i_Funct3 => s_Inst(13 downto 12),
+             o_Data   => s_DMemData,
+             o_BE     => s_DMemBE);
+
+  -- load unit (lb/lh/lbu/lhu)
+  LOAD0: loadUnit
+    port map(i_Word   => s_DMemOut,
+             i_Addr   => s_DMemAddr(1 downto 0),
+             i_Funct3 => s_Inst(14 downto 12),
+             o_Data   => s_LoadData);
+
   ---------------------------------------------------------------------
-  -- Write-back select (ResultSrc): 00 ALU, 01 DMem, 10 PC+4, 11 imm
+  -- Write-back select (ResultSrc): 00 ALU, 01 load, 10 PC+4, 11 imm
   ---------------------------------------------------------------------
   MUX_RES_LO: mux2t1_N
     generic map(N => N)
-    port map(i_S => s_ResultSrc(0), i_D0 => s_ALURes, i_D1 => s_DMemOut, o_O => s_ResLo);
+    port map(i_S => s_ResultSrc(0), i_D0 => s_ALURes, i_D1 => s_LoadData, o_O => s_ResLo);
 
   MUX_RES_HI: mux2t1_N
     generic map(N => N)
