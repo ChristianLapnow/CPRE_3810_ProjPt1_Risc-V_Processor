@@ -178,7 +178,7 @@ begin
     generic map(ADDR_WIDTH => ADDR_WIDTH,
                 DATA_WIDTH => N)
     port map(clk  => iCLK,
-             addr => s_IMemAddr(11 downto 2),
+             addr => s_IMemAddr(ADDR_WIDTH+1 downto 2),
              data => iInstExt,
              be   => "1111",
              we   => iInstLd,
@@ -188,7 +188,7 @@ begin
     generic map(ADDR_WIDTH => ADDR_WIDTH,
                 DATA_WIDTH => N)
     port map(clk  => iCLK,
-             addr => s_DMemAddr(11 downto 2),
+             addr => s_DMemAddr(ADDR_WIDTH+1 downto 2),
              data => s_DMemData,
              be   => s_DMemBE,
              we   => s_DMemWr,
