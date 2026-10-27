@@ -6,7 +6,6 @@ log -r /tb/MyRiscv/*
 mem load -infile imem.hex -format hex /MyRiscv/IMem
 mem load -infile dmem.hex -format hex /MyRiscv/DMem
 
-delete wave *
 
 add wave -divider "Clock / Reset"
 add wave /tb/CLK /tb/reset
