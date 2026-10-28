@@ -60,12 +60,8 @@ main:
     lhu   t6, 4(t1)          # t6 = 32768
     lh    s1, 6(t1)          # s1 = 32767
 
-    # byte and half stores
+    # sb/sh live in Proj1_store_test.s, course RARS doesn't trace their memory writes
     addi  t0, x0, -1         # t0 = 0xFFFFFFFF
     sw    x0, 8(s0)          # words[2] = 0
-    sb    t0, 8(s0)          # words[2] = 0x000000FF
-    sh    t0, 12(s0)         # words[3] = 0x0000FFFF
-    lw    s2, 8(s0)          # s2 = 255
-    lw    s3, 12(s0)         # s3 = 65535
 
     wfi
